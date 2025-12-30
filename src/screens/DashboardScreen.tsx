@@ -9,6 +9,7 @@ type RootStackParamList = {
     Reports: undefined;
     VoiceInventory: undefined;
     PointsOfSale: undefined;
+    Companies: undefined;
 };
 
 type DashboardNavProp = StackNavigationProp<RootStackParamList>;
@@ -26,7 +27,11 @@ export const DashboardScreen = () => {
                 </TouchableOpacity>
             </View>
 
+            {/* Debug info */}
             <Text style={styles.sectionTitle}>Menú Principal</Text>
+            <Text style={{ fontSize: 12, color: '#999', marginBottom: 10 }}>
+                Rol actual: {user?.role || 'No definido'}
+            </Text>
 
             <View style={styles.grid}>
                 <TouchableOpacity
@@ -60,6 +65,16 @@ export const DashboardScreen = () => {
                     <Text style={styles.cardEmoji}>🏪</Text>
                     <Text style={styles.cardText}>Puntos de Venta</Text>
                 </TouchableOpacity>
+
+                {(user?.role === 'SUPER_ADMIN' || user?.role === 'super_admin') && (
+                    <TouchableOpacity
+                        style={[styles.card, { backgroundColor: '#6c5ce7' }]}
+                        onPress={() => navigation.navigate('Companies')}
+                    >
+                        <Text style={styles.cardEmoji}>🏢</Text>
+                        <Text style={styles.cardText}>Empresas</Text>
+                    </TouchableOpacity>
+                )}
             </View>
         </ScrollView>
     );

@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import apiClient from '../api/client';
+import * as SecureStore from 'expo-secure-store';
+import { authService } from '../services/authService';
 import { User } from '../types';
 
 interface AuthContextType {
@@ -22,35 +22,44 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     const initializeAuthState = async () => {
         try {
-            const token = await AsyncStorage.getItem('token');
+            const token = await SecureStore.getItemAsync('token');
             if (token) {
-                const response = await apiClient.get<User>('/auth/profile');
-                setUser(response.data);
+                const userProfile = await authService.getProfile();
+                setUser(userProfile);
             }
         } catch (error) {
             console.log('Failed to restore auth session', error);
-            await AsyncStorage.removeItem('token');
+            await SecureStore.deleteItemAsync('token');
         } finally {
             setIsLoading(false);
         }
     };
 
     const login = async (email: string, pass: string) => {
-        const response = await apiClient.post<{ access_token: string }>('/auth/login', {
-            email,
-            password: pass,
-        });
+        try {
+            const { access_token } = await authService.login(email, pass);
+            try {
+                await SecureStore.setItemAsync('token', access_token);
+            } catch (storeError) {
+                console.error('SecureStore setItemAsync failed:', storeError);
+                // Fallback or alert logic could go here
+            }
 
-        const { access_token } = response.data;
-        await AsyncStorage.setItem('token', access_token);
-
-        // Fetch profile immediately after login
-        const profileResponse = await apiClient.get<User>('/auth/profile');
-        setUser(profileResponse.data);
+            // Fetch profile immediately after login
+            const userProfile = await authService.getProfile();
+            setUser(userProfile);
+        } catch (error) {
+            console.error('Login failed:', error);
+            throw error; // Re-throw to be handled by the UI
+        }
     };
 
     const logout = async () => {
-        await AsyncStorage.removeItem('token');
+        try {
+            await SecureStore.deleteItemAsync('token');
+        } catch (error) {
+            console.error('SecureStore deleteItemAsync failed:', error);
+        }
         setUser(null);
     };
 

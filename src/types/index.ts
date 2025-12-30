@@ -1,10 +1,24 @@
+export type UserRole = 'ADMIN' | 'SUPER_ADMIN' | 'CONTADOR' | 'admin' | 'super_admin' | 'contador';
+
 export interface User {
     id: number;
     email: string;
-    role: string;
+    name: string;
+    role: UserRole;
+    isActive?: boolean;
+    companyId?: number;
+    createdAt?: string;
+    // Legacy fields for backward compatibility (can be removed later)
     firstName?: string;
     lastName?: string;
     password?: string; // Only for creation/update
+}
+
+export interface Company {
+    id: number;
+    name: string;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export interface InventoryItem {

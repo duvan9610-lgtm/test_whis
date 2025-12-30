@@ -1,9 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
-import apiClient from '../api/client';
-import { User } from '../types';
+import {
+    View, Text, StyleSheet, FlatList, TouchableOpacity, Modal,
+    TextInput, Alert, ActivityIndicator
+} from 'react-native';
+import { useAuth } from '../context/AuthContext';
+import { userService } from '../services/userService';
+import { User, UserRole } from '../types';
 
 export const UsersScreen = () => {
+    const { user: currentUser } = useAuth();
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
@@ -12,9 +17,12 @@ export const UsersScreen = () => {
     // Form State
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [firstName, setFirstName] = useState('');
-    const [lastName, setLastName] = useState('');
-    const [role, setRole] = useState('user');
+    const [name, setName] = useState('');
+    const [role, setRole] = useState<UserRole>('contador');
+
+    // Check if current user is admin
+    const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN' ||
+        currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
 
     useEffect(() => {
         fetchUsers();
@@ -23,8 +31,8 @@ export const UsersScreen = () => {
     const fetchUsers = async () => {
         setLoading(true);
         try {
-            const response = await apiClient.get<User[]>('/users');
-            setUsers(response.data);
+            const data = await userService.listUsers();
+            setUsers(data);
         } catch (error) {
             console.error('Error fetching users', error);
             Alert.alert('Error', 'No se pudieron cargar los usuarios');
@@ -36,72 +44,81 @@ export const UsersScreen = () => {
     const resetForm = () => {
         setEmail('');
         setPassword('');
-        setFirstName('');
-        setLastName('');
-        setRole('user');
+        setName('');
+        setRole('contador');
         setEditingUser(null);
     };
 
     const openCreateModal = () => {
+        if (!isAdmin) {
+            Alert.alert('Acceso Denegado', 'Solo los administradores pueden crear usuarios');
+            return;
+        }
         resetForm();
         setModalVisible(true);
     };
 
     const openEditModal = (user: User) => {
+        if (!isAdmin) {
+            Alert.alert('Acceso Denegado', 'Solo los administradores pueden editar usuarios');
+            return;
+        }
         setEditingUser(user);
         setEmail(user.email);
-        setPassword(''); // Password usually not returned, keep empty or require strictly if changing
-        setFirstName(user.firstName || '');
-        setLastName(user.lastName || '');
+        setPassword('');
+        setName(user.name || '');
         setRole(user.role);
         setModalVisible(true);
     };
 
     const handleSave = async () => {
         // Validation
-        if (!email || !role) {
-            Alert.alert('Error', 'Email y Rol son obligatorios');
+        if (!email || !role || !name) {
+            Alert.alert('Error', 'Email, Nombre y Rol son obligatorios');
             return;
         }
 
         try {
             if (editingUser) {
                 // UPDATE
-                await apiClient.put(`/users/${editingUser.id}`, {
-                    firstName,
-                    lastName,
+                await userService.updateUser(editingUser.id, {
+                    name,
                     role,
-                    // Only send password if provided
                     ...(password ? { password } : {})
                 });
                 Alert.alert('Éxito', 'Usuario actualizado');
             } else {
-                // CREATE (Register)
+                // CREATE
                 if (!password) {
                     Alert.alert('Error', 'La contraseña es obligatoria para nuevos usuarios');
                     return;
                 }
-                await apiClient.post('/auth/register', {
+                await userService.createUser({
                     email,
                     password,
-                    firstName,
-                    lastName,
+                    name,
                     role
                 });
                 Alert.alert('Éxito', 'Usuario creado');
             }
             setModalVisible(false);
             fetchUsers();
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error saving user', error);
-            Alert.alert('Error', 'No se pudo guardar el usuario');
+            const message = error.response?.data?.message || 'No se pudo guardar el usuario';
+            Alert.alert('Error', message);
         }
     };
 
     const handleDelete = (user: User) => {
+        if (!isAdmin) {
+            Alert.alert('Acceso Denegado', 'Solo los administradores pueden eliminar usuarios');
+            return;
+        }
+
         Alert.alert(
             'Confirmar',
-            `¿Eliminar a ${user.email}?`,
+            `¿Eliminar a ${user.name || user.email}?`,
             [
                 { text: 'Cancelar', style: 'cancel' },
                 {
@@ -109,7 +126,8 @@ export const UsersScreen = () => {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            await apiClient.delete(`/users/${user.id}`);
+                            await userService.deleteUser(user.id);
+                            Alert.alert('Éxito', 'Usuario eliminado');
                             fetchUsers();
                         } catch (error) {
                             Alert.alert('Error', 'No se pudo eliminar');
@@ -123,20 +141,58 @@ export const UsersScreen = () => {
     const renderItem = ({ item }: { item: User }) => (
         <View style={styles.userCard}>
             <View style={{ flex: 1 }}>
-                <Text style={styles.userName}>{item.firstName} {item.lastName}</Text>
+                <Text style={styles.userName}>{item.name || `${item.firstName} ${item.lastName}`}</Text>
                 <Text style={styles.userEmail}>{item.email}</Text>
                 <Text style={styles.userRole}>{item.role}</Text>
             </View>
-            <View style={styles.actions}>
-                <TouchableOpacity onPress={() => openEditModal(item)} style={styles.editBtn}>
-                    <Text style={styles.btnText}>✎</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDelete(item)} style={styles.deleteBtn}>
-                    <Text style={styles.btnText}>X</Text>
-                </TouchableOpacity>
-            </View>
+            {isAdmin && (
+                <View style={styles.actions}>
+                    <TouchableOpacity onPress={() => openEditModal(item)} style={styles.editBtn}>
+                        <Text style={styles.btnText}>✎</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDelete(item)} style={styles.deleteBtn}>
+                        <Text style={styles.btnText}>X</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
         </View>
     );
+
+    const RolePicker = () => {
+        // SUPER_ADMIN can create any role
+        // ADMIN can only create CONTADOR and ADMIN
+        const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'super_admin';
+
+        const allRoles: UserRole[] = ['contador', 'admin', 'super_admin'];
+        const adminRoles: UserRole[] = ['contador', 'admin'];
+
+        const availableRoles = isSuperAdmin ? allRoles : adminRoles;
+
+        return (
+            <View style={styles.rolePickerContainer}>
+                <Text style={styles.roleLabel}>Rol:</Text>
+                <View style={styles.rolePicker}>
+                    {availableRoles.map((r) => (
+                        <TouchableOpacity
+                            key={r}
+                            style={[
+                                styles.roleOption,
+                                role === r && styles.roleOptionSelected
+                            ]}
+                            onPress={() => setRole(r)}
+                        >
+                            <Text style={[
+                                styles.roleOptionText,
+                                role === r && styles.roleOptionTextSelected
+                            ]}>
+                                {r.toUpperCase()}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            </View>
+        );
+    };
 
     return (
         <View style={styles.container}>
@@ -149,14 +205,18 @@ export const UsersScreen = () => {
                 />
             )}
 
-            <TouchableOpacity style={styles.fab} onPress={openCreateModal}>
-                <Text style={styles.fabText}>+</Text>
-            </TouchableOpacity>
+            {isAdmin && (
+                <TouchableOpacity style={styles.fab} onPress={openCreateModal}>
+                    <Text style={styles.fabText}>+</Text>
+                </TouchableOpacity>
+            )}
 
             <Modal visible={modalVisible} animationType="slide" transparent>
                 <View style={styles.modalBg}>
                     <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>{editingUser ? 'Editar Usuario' : 'Nuevo Usuario'}</Text>
+                        <Text style={styles.modalTitle}>
+                            {editingUser ? 'Editar Usuario' : 'Nuevo Usuario'}
+                        </Text>
 
                         {!editingUser && (
                             <TextInput
@@ -171,16 +231,11 @@ export const UsersScreen = () => {
 
                         <TextInput
                             style={styles.input}
-                            placeholder="Nombre"
-                            value={firstName}
-                            onChangeText={setFirstName}
+                            placeholder="Nombre Completo"
+                            value={name}
+                            onChangeText={setName}
                         />
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Apellido"
-                            value={lastName}
-                            onChangeText={setLastName}
-                        />
+
                         <TextInput
                             style={styles.input}
                             placeholder={editingUser ? "Nueva Contraseña (Opcional)" : "Contraseña"}
@@ -188,13 +243,8 @@ export const UsersScreen = () => {
                             onChangeText={setPassword}
                             secureTextEntry
                         />
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Rol (admin | user)"
-                            value={role}
-                            onChangeText={setRole}
-                            autoCapitalize="none"
-                        />
+
+                        <RolePicker />
 
                         <View style={styles.modalActions}>
                             <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelButton}>
@@ -219,8 +269,8 @@ const styles = StyleSheet.create({
         flexDirection: 'row', alignItems: 'center', elevation: 2
     },
     userName: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-    userEmail: { color: '#666' },
-    userRole: { fontSize: 12, color: '#007bff', fontWeight: 'bold', marginTop: 2 },
+    userEmail: { color: '#666', marginTop: 2 },
+    userRole: { fontSize: 12, color: '#007bff', fontWeight: 'bold', marginTop: 4 },
     actions: { flexDirection: 'row' },
     editBtn: { backgroundColor: '#ffc107', padding: 8, borderRadius: 5, marginRight: 10 },
     deleteBtn: { backgroundColor: '#dc3545', padding: 8, borderRadius: 5 },
@@ -237,6 +287,32 @@ const styles = StyleSheet.create({
     modalContent: { backgroundColor: 'white', borderRadius: 10, padding: 20 },
     modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
     input: { borderWidth: 1, borderColor: '#ddd', padding: 10, borderRadius: 5, marginBottom: 10 },
+
+    rolePickerContainer: { marginBottom: 15 },
+    roleLabel: { fontSize: 14, fontWeight: 'bold', marginBottom: 8, color: '#333' },
+    rolePicker: { flexDirection: 'row', justifyContent: 'space-between' },
+    roleOption: {
+        flex: 1,
+        padding: 10,
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 5,
+        marginHorizontal: 2,
+        alignItems: 'center'
+    },
+    roleOptionSelected: {
+        backgroundColor: '#007bff',
+        borderColor: '#007bff'
+    },
+    roleOptionText: {
+        fontSize: 10,
+        color: '#666'
+    },
+    roleOptionTextSelected: {
+        color: 'white',
+        fontWeight: 'bold'
+    },
+
     modalActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
     cancelButton: { backgroundColor: '#6c757d', padding: 10, borderRadius: 5, flex: 1, marginRight: 5, alignItems: 'center' },
     saveButton: { backgroundColor: '#28a745', padding: 10, borderRadius: 5, flex: 1, marginLeft: 5, alignItems: 'center' },

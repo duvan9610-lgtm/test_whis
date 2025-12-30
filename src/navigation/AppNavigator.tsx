@@ -11,6 +11,7 @@ import { VoiceSessionScreen } from '../screens/VoiceSessionScreen';
 import { UsersScreen } from '../screens/UsersScreen';
 import { ReportsScreen } from '../screens/ReportsScreen';
 import { PointOfSaleListScreen, CreatePointOfSaleScreen, AssociateUserScreen } from '../screens/PointsOfSale';
+import { CompaniesScreen } from '../screens/CompaniesScreen';
 
 const Stack = createStackNavigator();
 
@@ -62,6 +63,11 @@ export const AppNavigator = () => {
                             name="AssociateUser"
                             component={AssociateUserScreen}
                             options={{ headerShown: true, title: 'Asignar Usuario' }}
+                        />
+                        <Stack.Screen
+                            name="Companies"
+                            component={CompaniesScreen}
+                            options={{ headerShown: true, title: 'Empresas' }}
                         />
                     </>
                 ) : (
